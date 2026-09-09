@@ -1,0 +1,143 @@
+# Svara TTS API - Production Dockerfile
+# Multi-stage build for vLLM + SNAC + FastAPI deployment
+# CUDA 12.8 for NVIDIA Blackwell GPUs (RTX 5090)
+
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04 AS base
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PATH="/usr/local/cuda/bin:${PATH}" \
+    LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+
+# Install system dependencies including Python 3.11
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3-pip \
+    git \
+    wget \
+    curl \
+    libsndfile1 \
+    supervisor \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Upgrade pip and install uv for faster package management
+RUN python3 -m pip install --upgrade pip setuptools wheel \
+    && pip3 install uv
+
+# Set working directory
+WORKDIR /app
+
+# ============================================================================
+# Stage 1: Install PyTorch with CUDA 12.8 support
+# ============================================================================
+FROM base AS pytorch-builder
+
+# Install PyTorch with CUDA 12.8 support.
+#
+# --index-url (not --extra-index-url) is required: with PyPI as the primary
+# index pip resolves torch to a CUDA 13.0 build while torchaudio comes from
+# this index as cu128, and torchaudio then refuses to import. The +cu128 local
+# version pins each wheel unambiguously; PyPI stays available for pure-Python
+# dependencies.
+#
+# 2.10.0 rather than the newest: CUDA 13 wheels need driver r580+, and torch
+# 2.11+ defaults to cu130. torch 2.10.0 is the last release whose PyPI build is
+# CUDA 12.8, which is what makes a matching cu12 vLLM wheel available below.
+RUN pip3 install \
+    --index-url https://download.pytorch.org/whl/cu128 \
+    --extra-index-url https://pypi.org/simple \
+    torch==2.10.0+cu128 \
+    torchvision==0.25.0+cu128 \
+    torchaudio==2.10.0+cu128
+
+# ============================================================================
+# Stage 2: Install vLLM with CUDA 12.8 support
+# ============================================================================
+FROM pytorch-builder AS vllm-builder
+
+# Set environment variables for faster compilation if building from source
+ENV MAX_JOBS=4
+ENV NVCC_THREADS=4
+ENV TORCH_CUDA_ARCH_LIST="8.9;9.0"
+
+# vLLM's compiled extension links a specific CUDA runtime, so pinning torch
+# alone is not enough — the wheel itself must be a cu12 build or it fails at
+# import with "libcudart.so.13: cannot open shared object file".
+# 0.19.1 is the newest release pinned to torch==2.10.0 (CUDA 12.8); 0.20+ pin
+# torch 2.11.0 and ship as cu13. torch/torchaudio/torchvision are already
+# satisfied here, so this pulls no replacement wheels from PyPI.
+RUN pip3 install vllm==0.19.1
+
+# ============================================================================
+# Stage 3: Install application dependencies
+# ============================================================================
+FROM vllm-builder AS app-deps
+
+# Copy requirements file
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip3 install -r requirements.txt
+
+# Install additional dependencies for audio processing
+RUN pip3 install soundfile numpy
+
+# ============================================================================
+# Stage 4: Final application image
+# ============================================================================
+FROM app-deps AS final
+
+# Baseline defaults for every variable supervisord expands via %(ENV_...)s.
+# Without these, a compose file that omits any one of them makes supervisord
+# fail to start. Override any of them at runtime.
+ENV VLLM_MODEL=kenpath/svara-tts-v1 \
+    VLLM_HOST=0.0.0.0 \
+    VLLM_PORT=8000 \
+    VLLM_GPU_MEMORY_UTILIZATION=0.9 \
+    VLLM_MAX_MODEL_LEN=2048 \
+    VLLM_TENSOR_PARALLEL_SIZE=1 \
+    VLLM_DTYPE=auto \
+    VLLM_BASE_URL=http://localhost:8000/v1 \
+    API_HOST=0.0.0.0 \
+    API_PORT=8080 \
+    TTS_DEVICE=cuda \
+    SUPERVISOR_AUTORESTART=true
+
+# Copy application code
+COPY tts_engine/ ./tts_engine/
+COPY api/ ./api/
+COPY scripts/ ./scripts/
+COPY supervisord.conf /etc/supervisor/conf.d/svara-tts.conf
+
+# Make scripts executable
+RUN chmod +x ./scripts/*.sh ./scripts/*.py
+
+# Create directories for logs and cache
+RUN mkdir -p /var/log/supervisor /root/.cache/huggingface
+
+# Expose ports
+# 8000: vLLM server
+# 8080: FastAPI server
+EXPOSE 8000 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Start supervisord to manage all processes
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/svara-tts.conf"]
+

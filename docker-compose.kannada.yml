@@ -1,0 +1,95 @@
+# Standalone Kannada-only test stack.
+#
+# Own project network and own HF cache volume, so it shares nothing with the
+# main docker-compose.yml stack and can be brought up/down independently:
+#
+#   docker compose -f docker-compose.kannada.yml up --build
+#
+# Port 8030 is the FastAPI app (the one with /tts and /v1/text-to-speech).
+# 8040 exposes the raw vLLM OpenAI server for debugging only.
+
+services:
+  svara-tts-kannada:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: svara-tts-kannada:test
+    container_name: svara-tts-kn-test
+
+    ports:
+      - "8030:8080"   # FastAPI  -> /health, /tts, /v1/text-to-speech, /v1/voices
+      # 8031-8035 are taken by the ai-interviewer stack on this host.
+      - "8040:8000"   # vLLM     -> /v1/models, /v1/completions (debug)
+
+    environment:
+      # --- vLLM ---
+      - VLLM_MODEL=kenpath/svara-tts-v1
+      - VLLM_HOST=0.0.0.0
+      - VLLM_PORT=8000
+      - VLLM_GPU_MEMORY_UTILIZATION=0.25
+      - VLLM_MAX_MODEL_LEN=8192          # prompt + audio tokens share this window
+      #   ~82 audio tokens/sec, so 8192 fits roughly 90s of speech
+      - VLLM_TENSOR_PARALLEL_SIZE=1
+      - VLLM_DTYPE=bfloat16
+      # --- FastAPI ---
+      - API_HOST=0.0.0.0
+      - API_PORT=8080
+      - VLLM_BASE_URL=http://localhost:8000/v1
+      - TTS_DEVICE=cuda
+      # --- app-layer language lock ---
+      - ALLOWED_VOICES=kn_male,kn_female
+      - DEFAULT_VOICE=kn_female
+      # --- misc ---
+      # Respawn a crashed process so the stack survives unattended. The
+      # traceback still lands in /var/log/supervisor/*.log, which supervisord
+      # appends to across restarts, so nothing is lost by recovering.
+      # Set false when you want a crash to stay crashed while you read it.
+      - SUPERVISOR_AUTORESTART=true
+      - LOG_LEVEL=INFO
+      - HF_TOKEN=${HF_TOKEN:-}
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    volumes:
+      - kannada_hf_cache:/root/.cache/huggingface
+      # Live-mount app code so edits don't need a rebuild
+      - ./tts_engine:/app/tts_engine
+      - ./api:/app/api
+
+    # Come back after a crash, a docker daemon restart, or a host reboot.
+    # Use "no" instead when you want a failure to stay visible.
+    restart: unless-stopped
+
+    healthcheck:
+      # Probe BOTH processes. Checking only the FastAPI port reports "healthy"
+      # while the vLLM engine is dead, since uvicorn answers /health on its own.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null && curl -fsS http://localhost:8000/v1/models >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s   # first run downloads the model weights
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - svara-kn-test
+
+networks:
+  svara-kn-test:
+    name: svara-kn-test
+    driver: bridge
+
+volumes:
+  kannada_hf_cache:
+    name: svara-kn-test-hf-cache
+    driver: local

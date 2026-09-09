@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Svara — Kannada bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Noto+Serif+Kannada:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:      #EFF2F1;
+    --panel:      #FFFFFF;
+    --ink:        #22201E;
+    --ink-soft:   #5F5B56;
+    --ink-faint:  #8B857E;
+    --rule:       #D2D7D5;
+    --rule-soft:  #E4E8E6;
+    --kempu:      #D6272B;
+    --kempu-deep: #A81E22;
+    --haladi:     #F5C400;
+    --ok:         #1C7C4A;
+
+    --sans: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --kn:   'Noto Serif Kannada', 'Tunga', 'Kedage', serif;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
+    --spine: 62rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #171918;
+      --panel:      #1F2221;
+      --ink:        #EDEBE7;
+      --ink-soft:   #A8A39C;
+      --ink-faint:  #7C766F;
+      --rule:       #343937;
+      --rule-soft:  #282C2B;
+      --kempu:      #F2565A;
+      --kempu-deep: #FF8083;
+      --ok:         #4FBF80;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 1rem;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--kempu);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  /* ---------- status bar ---------- */
+
+  .bar {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    max-width: var(--spine);
+    margin: 0 auto;
+    padding: 1.6rem 1.5rem 1.1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .mark {
+    font-weight: 600;
+    font-size: 1.0625rem;
+    letter-spacing: -0.01em;
+  }
+
+  .mark::after {
+    content: "";
+    display: inline-block;
+    width: 0.5rem; height: 0.5rem;
+    margin-left: 0.5rem;
+    border-radius: 50%;
+    background: var(--haladi);
+    vertical-align: 0.05em;
+  }
+
+  .bar-sub {
+    color: var(--ink-faint);
+    font-size: 0.9375rem;
+  }
+
+  .status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+  }
+
+  .dot {
+    width: 0.5rem; height: 0.5rem;
+    border-radius: 50%;
+    background: var(--ink-faint);
+    flex: none;
+  }
+  .status[data-state="up"]   .dot { background: var(--ok); }
+  .status[data-state="down"] .dot { background: var(--kempu); }
+
+  /* ---------- layout ---------- */
+
+  main {
+    max-width: var(--spine);
+    margin: 0 auto;
+    padding: 0 1.5rem 5rem;
+  }
+
+  section { padding: 2.25rem 0; }
+  section + section { border-top: 1px solid var(--rule-soft); }
+
+  h2 {
+    margin: 0 0 0.4rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .lede {
+    margin: 0 0 1.5rem;
+    max-width: 54ch;
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+  }
+
+  /* ---------- the bench: Kannada input ---------- */
+
+  .bench { padding-top: 2.75rem; }
+
+  .kn-input {
+    display: block;
+    width: 100%;
+    min-height: 8.5rem;
+    padding: 1.5rem 1.6rem;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--ink);
+    font-family: var(--kn);
+    font-size: 1.75rem;
+    line-height: 1.7;
+    resize: vertical;
+  }
+
+  .kn-input::placeholder { color: var(--ink-faint); }
+
+  .kn-input:focus-visible {
+    outline: none;
+    border-color: var(--kempu);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--kempu) 18%, transparent);
+  }
+
+  .bench-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.1rem;
+  }
+
+  /* voice chips */
+
+  .voices { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.85rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 0.9375rem;
+    cursor: pointer;
+  }
+
+  .chip:hover { border-color: var(--ink-faint); }
+
+  .chip[aria-checked="true"] {
+    border-color: var(--ink);
+    color: var(--ink);
+    font-weight: 500;
+    box-shadow: inset 3px 0 0 var(--haladi);
+  }
+
+  .chip .kn {
+    font-family: var(--kn);
+    font-size: 1.0625rem;
+    line-height: 1;
+  }
+
+  .chip .id {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+  }
+
+  .count {
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
+  .grow { flex: 1 1 auto; }
+
+  /* primary action */
+
+  .speak {
+    padding: 0.7rem 1.7rem;
+    border: 1px solid var(--kempu-deep);
+    border-radius: 3px;
+    background: var(--kempu);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+
+  .speak:hover:not(:disabled) { background: var(--kempu-deep); }
+
+  .speak:disabled {
+    opacity: 0.55;
+    cursor: progress;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .speak { color: #171918; }
+  }
+
+  /* ---------- output ---------- */
+
+  .out[hidden] { display: none; }
+
+  .out-inner {
+    padding: 1.35rem 1.5rem;
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--haladi);
+    border-radius: 3px;
+    background: var(--panel);
+  }
+
+  audio {
+    display: block;
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+
+  .readout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.75rem;
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+  }
+
+  .readout div { display: flex; gap: 0.4rem; }
+  .readout dt { color: var(--ink-faint); }
+  .readout dd { margin: 0; }
+
+  .save {
+    display: inline-block;
+    margin-top: 1rem;
+    color: var(--kempu);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-decoration: none;
+    border-bottom: 1px solid currentColor;
+  }
+  .save:hover { color: var(--kempu-deep); }
+
+  /* ---------- settings ---------- */
+
+  details.params {
+    padding: 0;
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  details.params > summary {
+    padding: 1.4rem 0;
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+    cursor: pointer;
+  }
+  details.params > summary:hover { color: var(--ink); }
+
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1.1rem;
+    padding-bottom: 1.9rem;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+  .field label {
+    font-size: 0.875rem;
+    color: var(--ink-soft);
+  }
+
+  .field input {
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 0.875rem;
+  }
+
+  .field .hint {
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+  }
+
+  /* ---------- clone / upload ---------- */
+
+  .drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 9rem;
+    padding: 1.5rem;
+    border: 1.5px dashed var(--rule);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--ink-soft);
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .drop:hover { border-color: var(--ink-faint); }
+
+  .drop.over {
+    border-color: var(--haladi);
+    border-style: solid;
+    background: color-mix(in srgb, var(--haladi) 9%, var(--panel));
+  }
+
+  .drop.loaded {
+    border-style: solid;
+    border-color: var(--ink-faint);
+  }
+
+  .drop-main { font-size: 0.9375rem; color: var(--ink); }
+  .drop-sub  { font-family: var(--mono); font-size: 0.75rem; color: var(--ink-faint); }
+
+  .clone-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1.1rem;
+  }
+
+  .text-input {
+    flex: 1 1 18rem;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.9375rem;
+  }
+
+  .btn {
+    padding: 0.65rem 1.2rem;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .btn:hover:not(:disabled) { border-color: var(--ink); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+
+  .note {
+    margin: 1.2rem 0 0;
+    padding-left: 0.9rem;
+    border-left: 2px solid var(--rule);
+    max-width: 58ch;
+    font-size: 0.875rem;
+    color: var(--ink-faint);
+  }
+
+  /* ---------- lock check ---------- */
+
+  .check-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.9rem;
+  }
+
+  .verdict {
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+  }
+  .verdict[data-pass="yes"] { color: var(--ok); }
+  .verdict[data-pass="no"]  { color: var(--kempu); }
+
+  /* ---------- errors ---------- */
+
+  .error {
+    margin-top: 1.1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--kempu);
+    border-left-width: 3px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--kempu) 7%, var(--panel));
+    color: var(--ink);
+    font-size: 0.9375rem;
+  }
+  .error[hidden] { display: none; }
+  .error code {
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    color: var(--kempu-deep);
+  }
+
+  .working::after {
+    content: "";
+    display: inline-block;
+    width: 0.9rem;
+    text-align: left;
+    animation: dots 1.1s steps(4, end) infinite;
+  }
+  @keyframes dots {
+    0%   { content: ""; }
+    25%  { content: "."; }
+    50%  { content: ".."; }
+    75%  { content: "..."; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  @media (max-width: 34rem) {
+    .kn-input { font-size: 1.375rem; padding: 1.1rem 1.15rem; }
+    .bar { flex-wrap: wrap; }
+    .status { margin-left: 0; width: 100%; }
+    .speak { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <span class="mark">Svara</span>
+  <span class="bar-sub">Kannada bench</span>
+  <span class="status" id="status" data-state="wait">
+    <span class="dot"></span><span id="statusText">connecting</span>
+  </span>
+</header>
+
+<main>
+
+  <!-- ============ speak ============ -->
+  <section class="bench">
+    <label class="sr-only" for="text">Kannada text to speak</label>
+    <textarea id="text" class="kn-input" spellcheck="false"
+      placeholder="ಕನ್ನಡದಲ್ಲಿ ಇಲ್ಲಿ ಬರೆಯಿರಿ">ನಮಸ್ಕಾರ, ಇದು ಕನ್ನಡ ಧ್ವನಿ ಪರೀಕ್ಷೆ.</textarea>
+
+    <div class="bench-foot">
+      <div class="voices" id="voices" role="radiogroup" aria-label="Voice"></div>
+      <span class="grow"></span>
+      <span class="count" id="count">0 characters</span>
+      <button class="speak" id="speak">Speak</button>
+    </div>
+
+    <div class="error" id="speakError" hidden></div>
+
+    <div class="out" id="out" hidden>
+      <div class="out-inner">
+        <audio id="player" controls preload="auto"></audio>
+        <dl class="readout">
+          <div><dt>voice</dt><dd id="rVoice">—</dd></div>
+          <div><dt>length</dt><dd id="rLength">—</dd></div>
+          <div><dt>rate</dt><dd id="rRate">—</dd></div>
+          <div><dt>size</dt><dd id="rSize">—</dd></div>
+          <div><dt>generated in</dt><dd id="rTime">—</dd></div>
+        </dl>
+        <a class="save" id="save" download="speech.wav">Save wav</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ generation settings ============ -->
+  <details class="params">
+    <summary>Generation settings</summary>
+    <div class="fields">
+      <div class="field">
+        <label for="temperature">Temperature</label>
+        <input id="temperature" type="number" min="0" max="2" step="0.05" placeholder="0.75">
+        <span class="hint">Higher is more varied</span>
+      </div>
+      <div class="field">
+        <label for="top_p">Top-p</label>
+        <input id="top_p" type="number" min="0" max="1" step="0.05" placeholder="0.9">
+        <span class="hint">Nucleus sampling</span>
+      </div>
+      <div class="field">
+        <label for="repetition_penalty">Repetition penalty</label>
+        <input id="repetition_penalty" type="number" min="1" max="2" step="0.05" placeholder="1.1">
+        <span class="hint">Curbs looping sounds</span>
+      </div>
+      <div class="field">
+        <label for="max_tokens">Max tokens</label>
+        <input id="max_tokens" type="number" min="1" max="4096" step="1" placeholder="auto">
+        <span class="hint">Caps clip length</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- ============ clone ============ -->
+  <section class="clone">
+    <h2>Clone a voice from a recording</h2>
+    <p class="lede">Upload a clear sample of one speaker, a few seconds is enough. The
+      cloned voice joins the list above, so you can speak any text with it.</p>
+
+    <div class="drop" id="drop" tabindex="0" role="button"
+         aria-label="Choose an audio file to clone">
+      <span class="drop-main" id="dropMain">Drop an audio file here, or click to choose</span>
+      <span class="drop-sub" id="dropSub">wav, mp3, flac, ogg</span>
+    </div>
+    <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" hidden>
+
+    <div class="clone-row">
+      <input class="text-input" id="transcript" type="text"
+             placeholder="What the recording says (optional, improves the match)">
+      <button class="btn" id="cloneBtn" disabled>Clone voice</button>
+    </div>
+
+    <div class="error" id="cloneError" hidden></div>
+
+    <p class="note">Cloning takes its language from the recording itself, so it is not
+      covered by the Kannada allowlist that governs the preset voices. Upload
+      Kannada audio if you want Kannada out.</p>
+  </section>
+
+  <!-- ============ lock check ============ -->
+  <section class="checks">
+    <h2>Language lock</h2>
+    <p class="lede">This build serves Kannada only. The check asks for a Hindi voice
+      and confirms the server refuses it.</p>
+    <div class="check-row">
+      <button class="btn" id="lockBtn">Request hi_male</button>
+      <span class="verdict" id="lockVerdict"></span>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const SAMPLE_RATE = 24000;
+
+  // The model is trained on single utterances. Past roughly 400 characters it
+  // stops following the text and emits speech-like audio in no real language,
+  // and the server refuses anything longer for that reason. Long input is split
+  // here instead, one request per chunk, and the audio is joined back together.
+  // Cutting at sentence boundaries matters as much as the length: a chunk that
+  // ends mid-sentence makes the model ramble past the text it was given.
+  const MAX_CHUNK_CHARS = 300;
+  const CHUNK_GAP_MS = 150;
+
+  const $ = (id) => document.getElementById(id);
+
+  const el = {
+    status: $("status"), statusText: $("statusText"),
+    text: $("text"), count: $("count"), voices: $("voices"),
+    speak: $("speak"), speakError: $("speakError"),
+    out: $("out"), player: $("player"), save: $("save"),
+    rVoice: $("rVoice"), rLength: $("rLength"), rRate: $("rRate"),
+    rSize: $("rSize"), rTime: $("rTime"),
+    drop: $("drop"), dropMain: $("dropMain"), dropSub: $("dropSub"),
+    file: $("file"), transcript: $("transcript"),
+    cloneBtn: $("cloneBtn"), cloneError: $("cloneError"),
+    lockBtn: $("lockBtn"), lockVerdict: $("lockVerdict"),
+  };
+
+  const state = {
+    voices: [],        // {id, label, kn, clone?}
+    selected: null,
+    file: null,
+    lastUrl: null,
+    busy: false,
+  };
+
+  // Kannada label for the two genders, so the chips read in the script itself.
+  const KN_GENDER = { female: "ಹೆಣ್ಣು", male: "ಗಂಡು" };
+
+  // ---------- helpers ----------
+
+  const fmtBytes = (n) =>
+    n >= 1048576 ? (n / 1048576).toFixed(1) + " MB"
+                 : (n / 1024).toFixed(0) + " kB";
+
+  const fmtSecs = (s) => s.toFixed(2) + " s";
+
+  function showError(node, message, detail) {
+    node.innerHTML = "";
+    node.append(document.createTextNode(message));
+    if (detail) {
+      node.append(document.createElement("br"));
+      const code = document.createElement("code");
+      code.textContent = detail;
+      node.append(code);
+    }
+    node.hidden = false;
+  }
+
+  const clearError = (node) => { node.hidden = true; node.textContent = ""; };
+
+  /** Pull a useful message out of a FastAPI error response. */
+  async function apiError(res) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail)) {
+        detail = body.detail
+          .map((d) => `${(d.loc || []).slice(1).join(".")}: ${d.msg}`)
+          .join("; ");
+      } else if (body.detail) detail = JSON.stringify(body.detail);
+    } catch { /* not json */ }
+    return `HTTP ${res.status}${detail ? " — " + detail : ""}`;
+  }
+
+  /** Wrap raw mono PCM16 in a RIFF header. /v1/text-to-speech returns bare PCM. */
+  function pcmToWav(pcm, sampleRate = SAMPLE_RATE) {
+    const n = pcm.byteLength;
+    const buf = new ArrayBuffer(44 + n);
+    const v = new DataView(buf);
+    const tag = (off, s) => {
+      for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i));
+    };
+    tag(0, "RIFF");  v.setUint32(4, 36 + n, true);   tag(8, "WAVE");
+    tag(12, "fmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);                        // PCM
+    v.setUint16(22, 1, true);                        // mono
+    v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate * 2, true);           // byte rate
+    v.setUint16(32, 2, true);                        // block align
+    v.setUint16(34, 16, true);                       // bits
+    tag(36, "data"); v.setUint32(40, n, true);
+    new Uint8Array(buf, 44).set(new Uint8Array(pcm));
+    return new Blob([buf], { type: "audio/wav" });
+  }
+
+  // ---------- health ----------
+
+  async function pollHealth() {
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 4000);
+      const res = await fetch("/health", { signal: ctl.signal, cache: "no-store" });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error();
+      const body = await res.json();
+      el.status.dataset.state = "up";
+      el.statusText.textContent = body.model || "ready";
+    } catch {
+      el.status.dataset.state = "down";
+      el.statusText.textContent = "no response on this port";
+    }
+  }
+
+  // ---------- voices ----------
+
+  function renderVoices() {
+    el.voices.innerHTML = "";
+    for (const v of state.voices) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.setAttribute("role", "radio");
+      chip.setAttribute("aria-checked", String(v.id === state.selected));
+      chip.tabIndex = v.id === state.selected ? 0 : -1;
+
+      if (v.kn) {
+        const kn = document.createElement("span");
+        kn.className = "kn";
+        kn.textContent = v.kn;
+        chip.append(kn);
+      }
+      chip.append(document.createTextNode(v.label));
+      const id = document.createElement("span");
+      id.className = "id";
+      id.textContent = v.clone ? "cloned" : v.id;
+      chip.append(id);
+
+      chip.addEventListener("click", () => {
+        state.selected = v.id;
+        renderVoices();
+      });
+      el.voices.append(chip);
+    }
+  }
+
+  async function loadVoices() {
+    try {
+      const res = await fetch("/v1/voices?model_id=svara-tts-v1");
+      if (!res.ok) throw new Error(await apiError(res));
+      const body = await res.json();
+      state.voices = (body.voices || []).map((v) => ({
+        id: v.voice_id,
+        label: v.gender ? v.gender.replace(/^./, (c) => c.toUpperCase()) : v.name,
+        kn: KN_GENDER[v.gender] || "",
+      }));
+      if (!state.voices.length) {
+        showError(el.speakError, "The server reports no available voices.");
+        return;
+      }
+      state.selected =
+        state.voices.find((v) => v.id === "kn_female")?.id || state.voices[0].id;
+      renderVoices();
+    } catch (err) {
+      showError(el.speakError, "Could not load the voice list.", String(err.message || err));
+    }
+  }
+
+  // ---------- generation settings ----------
+
+  function readParams() {
+    const out = {};
+    for (const key of ["temperature", "top_p", "repetition_penalty", "max_tokens"]) {
+      const raw = $(key).value.trim();
+      if (raw === "") continue;
+      const num = Number(raw);
+      if (Number.isFinite(num)) out[key] = key === "max_tokens" ? Math.round(num) : num;
+    }
+    return out;
+  }
+
+  // ---------- chunking ----------
+
+  /** Split text into chunks the model can read reliably, preferring sentence ends. */
+  function chunkText(text, maxChars = MAX_CHUNK_CHARS) {
+    const sentences = text.trim().split(/(?<=[.;?!।])\s+/).filter(Boolean);
+    const chunks = [];
+    let current = "";
+
+    const forceSplit = (piece) => {
+      // An unbroken sentence longer than the limit: fall back to the most
+      // natural break available. These cuts land mid-sentence, which the model
+      // reads less cleanly, so they are a last resort.
+      for (const re of [/(?<=[,:])\s+/, /\s+/]) {
+        const parts = piece.split(re).filter(Boolean);
+        if (parts.length > 1) return pack(parts);
+      }
+      const out = [];
+      for (let i = 0; i < piece.length; i += maxChars) out.push(piece.slice(i, i + maxChars));
+      return out;
+    };
+
+    const pack = (pieces) => {
+      const packed = [];
+      let buf = "";
+      for (const piece of pieces) {
+        if (piece.length > maxChars) {
+          if (buf) { packed.push(buf); buf = ""; }
+          packed.push(...forceSplit(piece));
+          continue;
+        }
+        const candidate = buf ? buf + " " + piece : piece;
+        if (candidate.length <= maxChars) buf = candidate;
+        else { packed.push(buf); buf = piece; }
+      }
+      if (buf) packed.push(buf);
+      return packed;
+    };
+
+    for (const chunk of pack(sentences)) chunks.push(chunk);
+    return chunks.length ? chunks : [text.trim()];
+  }
+
+  /** Join PCM buffers with a short silence between them. */
+  function joinPcm(buffers) {
+    const gap = Math.round((CHUNK_GAP_MS * SAMPLE_RATE) / 1000) * 2;
+    const total = buffers.reduce((n, b) => n + b.byteLength, 0)
+                + gap * Math.max(0, buffers.length - 1);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    buffers.forEach((buf, i) => {
+      if (i > 0) offset += gap;             // the gap stays zeroed, i.e. silence
+      out.set(new Uint8Array(buf), offset);
+      offset += buf.byteLength;
+    });
+    return out.buffer;
+  }
+
+  // ---------- speak ----------
+
+  function setBusy(on, label) {
+    state.busy = on;
+    el.speak.disabled = on;
+    el.speak.classList.toggle("working", on);
+    el.speak.textContent = on ? (label || "Speaking") : "Speak";
+  }
+
+  function present(blob, meta, elapsed) {
+    if (state.lastUrl) URL.revokeObjectURL(state.lastUrl);
+    state.lastUrl = URL.createObjectURL(blob);
+
+    el.player.src = state.lastUrl;
+    el.save.href = state.lastUrl;
+    el.save.download = meta.filename;
+
+    el.rVoice.textContent = meta.voice;
+    el.rRate.textContent = SAMPLE_RATE / 1000 + " kHz mono";
+    el.rSize.textContent = fmtBytes(blob.size);
+    el.rTime.textContent = fmtSecs(elapsed);
+    el.rLength.textContent = "…";
+
+    el.out.hidden = false;
+    el.player.addEventListener("loadedmetadata", function once() {
+      el.player.removeEventListener("loadedmetadata", once);
+      const d = el.player.duration;
+      el.rLength.textContent = Number.isFinite(d) ? fmtSecs(d) : "unknown";
+    });
+  }
+
+  async function speak() {
+    if (state.busy) return;
+    const text = el.text.value.trim();
+    clearError(el.speakError);
+
+    if (!text) {
+      showError(el.speakError, "Enter some Kannada text first.");
+      el.text.focus();
+      return;
+    }
+    const voice = state.voices.find((v) => v.id === state.selected);
+    if (!voice) {
+      showError(el.speakError, "Pick a voice first.");
+      return;
+    }
+
+    const chunks = chunkText(text);
+    setBusy(true, chunks.length > 1 ? `1 / ${chunks.length}` : "Speaking");
+    const started = performance.now();
+    try {
+      // One request at a time: the server holds per-request state that is not
+      // safe to share, and concurrent calls fail with a 500.
+      const pieces = [];
+      for (let i = 0; i < chunks.length; i++) {
+        if (chunks.length > 1) setBusy(true, `${i + 1} / ${chunks.length}`);
+        const params = readParams();
+        let pcm;
+
+        if (voice.clone) {
+          // Cloned voices go through /v1/text-to-speech, which returns raw PCM.
+          const form = new FormData();
+          form.set("text", chunks[i]);
+          form.set("voice_clone_id", voice.cloneId);
+          form.set("stream", "false");
+          if (voice.transcript) form.set("reference_transcript", voice.transcript);
+          for (const [k, val] of Object.entries(params)) form.set(k, String(val));
+
+          const res = await fetch("/v1/text-to-speech", { method: "POST", body: form });
+          if (!res.ok) throw new Error(await apiError(res));
+          pcm = await res.arrayBuffer();
+        } else {
+          // Preset voices go through /tts; ask for PCM so the pieces concatenate.
+          const res = await fetch("/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: chunks[i], voice: voice.id, format: "pcm", ...params }),
+          });
+          if (!res.ok) throw new Error(await apiError(res));
+          pcm = await res.arrayBuffer();
+        }
+
+        if (!pcm.byteLength) {
+          throw new Error(chunks.length > 1
+            ? `Part ${i + 1} of ${chunks.length} came back empty.`
+            : "The server returned no audio.");
+        }
+        pieces.push(pcm);
+      }
+
+      const blob = pcmToWav(pieces.length > 1 ? joinPcm(pieces) : pieces[0]);
+      if (!blob.size) throw new Error("The server returned no audio.");
+      present(blob, {
+        voice: voice.clone ? "cloned" : voice.id,
+        filename: (voice.clone ? "cloned" : voice.id) + ".wav",
+      }, (performance.now() - started) / 1000);
+    } catch (err) {
+      showError(el.speakError, "Could not generate speech.", String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ---------- clone ----------
+
+  function acceptFile(f) {
+    if (!f) return;
+    state.file = f;
+    el.drop.classList.add("loaded");
+    el.dropMain.textContent = f.name;
+    el.dropSub.textContent = fmtBytes(f.size) + (f.type ? " · " + f.type : "");
+    el.cloneBtn.disabled = false;
+    clearError(el.cloneError);
+  }
+
+  async function cloneVoice() {
+    if (!state.file) return;
+    clearError(el.cloneError);
+    el.cloneBtn.disabled = true;
+    el.cloneBtn.classList.add("working");
+    el.cloneBtn.textContent = "Cloning";
+
+    try {
+      const form = new FormData();
+      form.set("reference_audio", state.file, state.file.name);
+      form.set("return_tokens", "false");
+      const transcript = el.transcript.value.trim();
+      if (transcript) form.set("reference_transcript", transcript);
+
+      const res = await fetch("/v1/voice-clone", { method: "POST", body: form });
+      if (!res.ok) throw new Error(await apiError(res));
+      const body = await res.json();
+
+      const id = "clone:" + body.voice_id;
+      state.voices = state.voices.filter((v) => !v.clone);
+      state.voices.push({
+        id,
+        label: state.file.name.replace(/\.[^.]+$/, ""),
+        kn: "",
+        clone: true,
+        cloneId: body.voice_id,
+        transcript,
+      });
+      state.selected = id;
+      renderVoices();
+      el.dropSub.textContent =
+        body.audio_token_count + " tokens · " + body.sample_rate_hz + " Hz";
+      el.text.focus();
+    } catch (err) {
+      showError(el.cloneError, "Could not clone that recording.", String(err.message || err));
+    } finally {
+      el.cloneBtn.classList.remove("working");
+      el.cloneBtn.textContent = "Clone voice";
+      el.cloneBtn.disabled = !state.file;
+    }
+  }
+
+  // ---------- lock check ----------
+
+  async function checkLock() {
+    el.lockBtn.disabled = true;
+    el.lockVerdict.removeAttribute("data-pass");
+    el.lockVerdict.textContent = "checking";
+    try {
+      const res = await fetch("/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "ಪರೀಕ್ಷೆ", voice: "hi_male" }),
+      });
+      if (res.status === 400) {
+        const body = await res.json().catch(() => ({}));
+        el.lockVerdict.dataset.pass = "yes";
+        el.lockVerdict.textContent = "refused — " + (body.detail || "400");
+      } else {
+        el.lockVerdict.dataset.pass = "no";
+        el.lockVerdict.textContent =
+          "not refused — got HTTP " + res.status + ", the lock is not holding";
+      }
+    } catch (err) {
+      el.lockVerdict.dataset.pass = "no";
+      el.lockVerdict.textContent = "check failed — " + (err.message || err);
+    } finally {
+      el.lockBtn.disabled = false;
+    }
+  }
+
+  // ---------- wiring ----------
+
+  const updateCount = () => {
+    const n = [...el.text.value].length;
+    const label = n === 1 ? "1 character" : n + " characters";
+    // Say up front that long text will be read in several passes, so the
+    // progress counter on the button is not a surprise.
+    const parts = n > MAX_CHUNK_CHARS ? chunkText(el.text.value).length : 1;
+    el.count.textContent = parts > 1 ? `${label} · ${parts} parts` : label;
+  };
+
+  el.text.addEventListener("input", updateCount);
+  el.text.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); speak(); }
+  });
+
+  el.speak.addEventListener("click", speak);
+  el.lockBtn.addEventListener("click", checkLock);
+  el.cloneBtn.addEventListener("click", cloneVoice);
+
+  el.voices.addEventListener("keydown", (e) => {
+    const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const i = state.voices.findIndex((v) => v.id === state.selected);
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
+    const next = (i + step + state.voices.length) % state.voices.length;
+    state.selected = state.voices[next].id;
+    renderVoices();
+    el.voices.querySelector('[aria-checked="true"]')?.focus();
+  });
+
+  el.drop.addEventListener("click", () => el.file.click());
+  el.drop.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.file.click(); }
+  });
+  el.file.addEventListener("change", () => acceptFile(el.file.files[0]));
+
+  for (const type of ["dragenter", "dragover"]) {
+    el.drop.addEventListener(type, (e) => {
+      e.preventDefault();
+      el.drop.classList.add("over");
+    });
+  }
+  for (const type of ["dragleave", "drop"]) {
+    el.drop.addEventListener(type, (e) => {
+      e.preventDefault();
+      el.drop.classList.remove("over");
+    });
+  }
+  el.drop.addEventListener("drop", (e) => acceptFile(e.dataTransfer?.files?.[0]));
+
+  updateCount();
+  loadVoices();
+  pollHealth();
+  setInterval(pollHealth, 8000);
+})();
+</script>
+</body>
+</html>
