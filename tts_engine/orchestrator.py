@@ -50,7 +50,6 @@ class SvaraTTSOrchestrator:
         
         self.transport      = VLLMCompletionsTransport(base_url, model, headers)
         self.transport_async = None  # lazy
-        self.mapper     = SvaraMapper()
         self.codec      = SNACCodec(device)
         self.prebuffer_samples = int(self.codec.sample_rate * prebuffer_seconds)
         self.concurrent_decode = concurrent_decode
@@ -82,6 +81,7 @@ class SvaraTTSOrchestrator:
             logger.info(f"Final prompt before tokenization: {len(prompt)} chars")
             logger.debug(f"Full prompt: {prompt}")
         
+        mapper = SvaraMapper()
         audio_buf = AudioBuffer(self.prebuffer_samples)
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) if self.concurrent_decode else None
         pending: List[concurrent.futures.Future] = []
@@ -95,7 +95,7 @@ class SvaraTTSOrchestrator:
         try:
             for token_text in self.transport.stream(prompt, **gen_kwargs):
                 for n in extract_custom_token_numbers(token_text):
-                    win = self.mapper.feed_raw(n)
+                    win = mapper.feed_raw(n)
                     if win is not None:
                         pending.append(submit(win))
                         
@@ -147,6 +147,7 @@ class SvaraTTSOrchestrator:
             logger.info(f"Final prompt before tokenization: {len(prompt)} chars")
             logger.debug(f"Full prompt: {prompt}")
         
+        mapper = SvaraMapper()
         audio_buf = AudioBuffer(self.prebuffer_samples)
         loop = asyncio.get_running_loop()
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) if self.concurrent_decode else None
@@ -164,7 +165,7 @@ class SvaraTTSOrchestrator:
         try:
             async for token_text in self.transport_async.astream(prompt, **gen_kwargs):
                 for n in extract_custom_token_numbers(token_text):
-                    win = self.mapper.feed_raw(n)
+                    win = mapper.feed_raw(n)
                     if win is not None:
                         pending.append(asyncio.create_task(submit_async(win)))
                         
