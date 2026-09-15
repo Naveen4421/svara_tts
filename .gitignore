@@ -147,6 +147,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+svara_env/
+
+# Unsloth's auto-generated compiled-kernel cache (regenerated on next run)
+unsloth_compiled_cache/
 
 # Spyder project settings
 .spyderproject

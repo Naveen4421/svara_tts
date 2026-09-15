@@ -23,7 +23,13 @@ services:
 
     environment:
       # --- vLLM ---
-      - VLLM_MODEL=kenpath/svara-tts-v1
+      # Kannada LoRA fine-tune v2 (2026-09-15) - retrained after the v1
+      # attempt (2026-09-11) was tested live, rolled back for garbled words +
+      # lost sentence-final pausing, traced to ~27% of training transcripts
+      # missing terminal punctuation, and fixed (see training/REPORT.md).
+      # Rollback: set VLLM_MODEL back to kenpath/svara-tts-v1 and remove the
+      # volume mount below.
+      - VLLM_MODEL=/models/svara-tts-v1-kn-lora-v2
       - VLLM_HOST=0.0.0.0
       - VLLM_PORT=8000
       - VLLM_GPU_MEMORY_UTILIZATION=0.25
@@ -39,6 +45,12 @@ services:
       # --- app-layer language lock ---
       - ALLOWED_VOICES=kn_male,kn_female
       - DEFAULT_VOICE=kn_female
+      # Speaking speed. Applied via WSOLA time-stretch (pitch-preserving,
+      # tts_engine.utils.time_stretch_preserve_pitch) to complete audio
+      # responses (/tts, non-streaming /v1/text-to-speech). Only affects
+      # this deployment. History: 1.3 requested and deployed, then user
+      # reduced to 1.2.
+      - SPEECH_SPEED_FACTOR=1.2
       # --- misc ---
       # Respawn a crashed process so the stack survives unattended. The
       # traceback still lands in /var/log/supervisor/*.log, which supervisord
@@ -61,6 +73,8 @@ services:
       # Live-mount app code so edits don't need a rebuild
       - ./tts_engine:/app/tts_engine
       - ./api:/app/api
+      # Fine-tuned Kannada checkpoint (v2), read-only.
+      - /mnt/siet_llm_data/svara_training/checkpoints/svara-tts-v1-kn-lora-v2-2026-09-15:/models/svara-tts-v1-kn-lora-v2:ro
 
     # Come back after a crash, a docker daemon restart, or a host reboot.
     # Use "no" instead when you want a failure to stay visible.

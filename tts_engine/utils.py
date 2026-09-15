@@ -462,19 +462,142 @@ def change_audio_speed(
     if speed_factor == 1.0:
         return audio.squeeze(0) if squeeze_output else audio
     
-    # Calculate the target sample rate
-    # Speed up: increase sample rate (fewer samples for same duration)
-    # Slow down: decrease sample rate (more samples for same duration)
-    target_sr = int(sample_rate * speed_factor)
-    
+    # Tape-speed trick: treat the audio as if it were recorded at
+    # sample_rate * speed_factor, then resample it back down to sample_rate.
+    # Resampling from a higher "virtual" rate down to sample_rate yields
+    # fewer samples (speeds up); from a lower one yields more (slows down).
+    virtual_sr = int(sample_rate * speed_factor)
+
     # Use functional API for one-time resampling
     adjusted = torchaudio.functional.resample(
         audio,
-        orig_freq=sample_rate,
-        new_freq=target_sr,
+        orig_freq=virtual_sr,
+        new_freq=sample_rate,
     )
     
     # Return with original shape
+    return adjusted.squeeze(0) if squeeze_output else adjusted
+
+
+def _wsola_stretch_mono(
+    audio: torch.Tensor,
+    speed_factor: float,
+    frame_length: int = 1024,
+    tolerance: Optional[int] = None,
+) -> torch.Tensor:
+    """
+    WSOLA (waveform-similarity overlap-add) time-stretch for a single
+    channel. Unlike a phase-vocoder (torch.stft + TimeStretch + torch.istft),
+    this works entirely in the time domain: instead of committing to a fixed
+    hop through the input, it searches a small window around the nominal
+    next position for the offset whose waveform best matches (by cross-
+    correlation) a natural continuation of what was just synthesized, then
+    overlap-adds that frame. This avoids the "phasiness"/crackling a phase
+    vocoder produces on speech transients (consonants, plosives).
+    """
+    device = audio.device
+    synthesis_hop = frame_length // 2
+    analysis_hop = max(1, round(synthesis_hop * speed_factor))
+    if tolerance is None:
+        tolerance = synthesis_hop // 2
+    overlap_length = frame_length - synthesis_hop
+
+    window = torch.hann_window(frame_length, periodic=True, device=device)
+    n = audio.shape[-1]
+    pad_end = frame_length + tolerance + analysis_hop + 8
+    x = torch.nn.functional.pad(audio, (tolerance, pad_end))
+
+    def get(padded_start: int, length: int) -> torch.Tensor:
+        return x[padded_start:padded_start + length]
+
+    expected_out_len = int(round(n / speed_factor))
+    out = torch.zeros(expected_out_len + frame_length, device=device)
+    norm = torch.zeros(expected_out_len + frame_length, device=device)
+
+    # First frame has nothing to align to - just place it as-is.
+    actual_ana_pos = 0
+    out[0:frame_length] += get(tolerance, frame_length) * window
+    norm[0:frame_length] += window
+    syn_pos = 0
+    nominal_ana_pos = 0
+
+    num_frames = int(expected_out_len // synthesis_hop) + 4
+    for _ in range(1, num_frames):
+        syn_pos += synthesis_hop
+        nominal_ana_pos += analysis_hop
+        if syn_pos >= expected_out_len + frame_length - synthesis_hop:
+            break
+        if nominal_ana_pos + frame_length + tolerance >= n:
+            break
+
+        # What a perfect continuation from the last placed frame looks like.
+        reference = get(actual_ana_pos + synthesis_hop + tolerance, overlap_length)
+
+        # Candidate offsets around the nominal position; pick the one whose
+        # start best matches that reference by normalized cross-correlation.
+        # (True position nominal_ana_pos - tolerance maps to padded index
+        # nominal_ana_pos, since the array was padded by `tolerance` at front.)
+        candidates = get(nominal_ana_pos, overlap_length + 2 * tolerance)
+        cand_windows = candidates.unfold(0, overlap_length, 1)
+
+        ref_norm = reference / (reference.norm() + 1e-8)
+        cand_norm = cand_windows / (cand_windows.norm(dim=1, keepdim=True) + 1e-8)
+        scores = (cand_norm * ref_norm.unsqueeze(0)).sum(dim=1)
+        best_delta = int(scores.argmax().item()) - tolerance
+        actual_ana_pos = nominal_ana_pos + best_delta
+
+        out[syn_pos:syn_pos + frame_length] += get(actual_ana_pos + tolerance, frame_length) * window
+        norm[syn_pos:syn_pos + frame_length] += window
+
+    norm = norm.clamp(min=1e-6)
+    return (out / norm)[:expected_out_len]
+
+
+def time_stretch_preserve_pitch(
+    audio: torch.Tensor,
+    speed_factor: float,
+    sample_rate: int,
+    device: Optional[str] = None,
+) -> torch.Tensor:
+    """
+    Change audio speed via WSOLA time-stretching, WITHOUT changing pitch
+    (unlike change_audio_speed's tape-speed trick, which shifts pitch along
+    with speed - audible as a "younger/child-like" voice at 1.3x+). Uses
+    time-domain waveform-similarity overlap-add rather than a phase vocoder,
+    since the latter crackles on speech transients (consonants, plosives).
+
+    Args:
+        audio: Audio tensor of shape (channels, samples) or (samples,).
+        speed_factor: Speed multiplier. 1.0 = original speed, 1.3 = 30% faster.
+        sample_rate: Sample rate of the input audio in Hz. (Kept for API
+            symmetry with change_audio_speed; WSOLA's frame sizes are in
+            samples and don't need it directly.)
+        device: Device to use ('cuda', 'mps', 'cpu', or None for auto-detect).
+
+    Returns:
+        Speed-adjusted audio tensor with shape matching input, same pitch.
+    """
+    if device is None:
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+
+    if audio.dim() == 1:
+        audio = audio.unsqueeze(0)
+        squeeze_output = True
+    else:
+        squeeze_output = False
+
+    audio = audio.to(device)
+
+    if speed_factor == 1.0:
+        return audio.squeeze(0) if squeeze_output else audio
+
+    adjusted = torch.stack([_wsola_stretch_mono(ch, speed_factor) for ch in audio])
+
     return adjusted.squeeze(0) if squeeze_output else adjusted
 
 

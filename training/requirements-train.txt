@@ -1,0 +1,43 @@
+# Training-only dependencies. NOT used by the serving stack (api/, tts_engine/),
+# which is pinned separately in the repo-root requirements.txt.
+#
+# Install order matters - see setup_env.sh. torch/torchaudio must land first from
+# the cu128 wheel index, then unsloth with --no-deps so it can't downgrade torch.
+
+peft
+accelerate
+bitsandbytes
+pyarrow
+# trl and datasets are installed separately in setup_env.sh, pinned to the
+# ranges unsloth_zoo actually supports - don't add unpinned copies here.
+
+# Reuse the same audio/codec deps tts_engine already depends on, rather than
+# re-pinning separately.
+snac
+soundfile
+langcodes
+language_data
+
+# unsloth_zoo/unsloth are installed with --no-deps, so their own runtime deps
+# (checked via their package metadata) have to be listed explicitly.
+pillow
+hf_transfer
+msgspec
+protobuf
+sentencepiece>=0.2.0
+torchao>=0.13.0
+tyro
+wheel>=0.42.0
+cut_cross_entropy
+nest-asyncio
+pydantic
+structlog>=24.1.0
+# NOTE: unsloth's metadata also lists diffusers, torchvision, and xformers as
+# deps, all deliberately omitted (confirmed empirically, not guessed):
+# - diffusers>=0.40 requires huggingface-hub>=1.23, which conflicts with the
+#   huggingface-hub<1.0 that transformers==4.55.4/tokenizers need.
+# - torchvision/xformers pull in an unpinned newer torch build that conflicts
+#   with our cu128 2.10.0 pin (xformers dragged in torch 2.14.0 and broke
+#   torchaudio/unsloth_zoo's own torch<2.13 pin).
+# None of the three are required for `import unsloth` or for LoRA text-model
+# training - they're for vision models / optional attention speedups.

@@ -30,7 +30,7 @@ from transformers import AutoTokenizer
 from tts_engine.voice_config import get_all_voices, get_speaker_id
 from tts_engine.orchestrator import SvaraTTSOrchestrator
 from tts_engine.timing import get_timing_stats, reset_timing_stats
-from tts_engine.utils import load_audio_from_bytes, svara_zero_shot_prompt, svara_prompt
+from tts_engine.utils import load_audio_from_bytes, svara_zero_shot_prompt, svara_prompt, time_stretch_preserve_pitch
 from tts_engine.snac_codec import SNACCodec
 from api.models import (
     VoiceResponse,
@@ -67,6 +67,26 @@ DEFAULT_VOICE: Optional[str] = os.getenv("DEFAULT_VOICE") or (
 
 # The SNAC decoder always emits mono PCM16 at this rate.
 SAMPLE_RATE = 24000
+
+# Playback speed multiplier applied to complete (non-streaming) audio before
+# it's returned. 1.0 = unchanged. Uses WSOLA time-stretching
+# (time_stretch_preserve_pitch), which changes speed without shifting pitch.
+# Two earlier approaches were tried and rejected: a plain resample-based
+# speedup shifted pitch up (made the voice sound child-like at 1.3x), and a
+# phase-vocoder version fixed the pitch shift but crackled on speech
+# transients (consonants/plosives).
+SPEECH_SPEED_FACTOR = float(os.getenv("SPEECH_SPEED_FACTOR", "1.0"))
+
+
+def _apply_speed(pcm: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
+    if SPEECH_SPEED_FACTOR == 1.0 or not pcm:
+        return pcm
+    import numpy as np
+    import torch
+    audio = torch.from_numpy(np.frombuffer(pcm, dtype=np.int16).copy()).float() / 32767.0
+    adjusted = time_stretch_preserve_pitch(audio, SPEECH_SPEED_FACTOR, sample_rate)
+    adjusted = adjusted.clamp(-1.0, 1.0).cpu().numpy()
+    return (adjusted * 32767.0).astype(np.int16).tobytes()
 
 # SNAC emits 7 tokens per frame and each frame decodes to 2048 samples, so
 # audio costs SAMPLE_RATE / 2048 * 7 tokens for every second of speech.
@@ -559,8 +579,8 @@ async def text_to_speech(
             async for chunk in request_orchestrator.astream(request_text, prompt=prompt, **gen_kwargs):
                 audio_chunks.append(chunk)
             
-            complete_audio = b"".join(audio_chunks)
-            
+            complete_audio = _apply_speed(b"".join(audio_chunks))
+
             return Response(
                 content=complete_audio,
                 media_type="audio/pcm",
@@ -724,18 +744,21 @@ async def synthesize(request: SimpleTTSRequest):
     if not pcm:
         raise HTTPException(status_code=500, detail="Model returned no audio")
 
-    if request.format == "wav":
-        body, media_type, filename = _pcm_to_wav(pcm, SAMPLE_RATE), "audio/wav", "speech.wav"
-    else:
-        body, media_type, filename = pcm, "audio/pcm", "speech.pcm"
-
     # Generation stops either because the model emitted an end token or because
     # it exhausted max_tokens. Only the second case loses the tail of the text,
     # and it is otherwise indistinguishable from a normal short clip, so report
     # it. Tokens are recovered from the sample count rather than tracked through
     # the stream; allow a frame of slack so a clean stop is not flagged.
+    # Measured against the model's native output, before any speed adjustment.
     audio_seconds = len(pcm) / 2 / SAMPLE_RATE
     truncated = audio_seconds * TOKENS_PER_AUDIO_SECOND >= gen_kwargs["max_tokens"] - 7
+
+    pcm = _apply_speed(pcm)
+
+    if request.format == "wav":
+        body, media_type, filename = _pcm_to_wav(pcm, SAMPLE_RATE), "audio/wav", "speech.wav"
+    else:
+        body, media_type, filename = pcm, "audio/pcm", "speech.pcm"
     if truncated:
         logger.warning(
             "Generation stopped at the %d-token cap after %.2fs - audio is cut short",
